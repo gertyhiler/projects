@@ -1,9 +1,26 @@
 {
   "host": "laptop",
-  "roots": ["~/Projects", "~/code"],
-  "opener": ["nvim", "."],
+  "roots": [
+    "~/Projects",
+    "~/code"
+  ],
+  "opener": [
+    "nvim",
+    "."
+  ],
   "backend": "direct",
   "remotes": [
-    {"name": "workbox", "ssh": "workbox", "backend": "herdr"}
-  ]
+    {
+      "name": "workbox",
+      "ssh": "workbox",
+      "backend": "herdr"
+    }
+  ],
+  "ui": {
+    "style": "accented",
+    "navigation": "vim",
+    "icons": false,
+    "show_path": false,
+    "show_help": true
+  }
 }

@@ -28,3 +28,13 @@ installation needs one full scan. Only discovery settings identify the cache.
 Local roots and Git queries share a bounded pool (four workers by default),
 with one worktree query per common repository; local and SSH discovery overlap.
 Atomic replacement keeps readers independent of refresh progress.
+
+## Picker presentation and navigation
+
+The owner approved independent style, navigation, icons, path and help settings.
+Native fzf actions implement INSERT/NORMAL navigation, preserving query/selection.
+Interactive usage requires fzf 0.67.0+; noninteractive discovery remains independent.
+Nerd Font icons require explicit opt-in. Existing installations retain plain
+navigation and appearance unless configured. Presentation never alters context
+identity or discovery cache keys. Narrow-screen layout and horizontal navigation
+are deferred. Interface messages and documentation are English.

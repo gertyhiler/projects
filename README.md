@@ -11,7 +11,7 @@ laptop  · website › fix-checkout
 
 ## Install
 
-Requires macOS or Linux, Python 3.9+, Git 2.36+, and fzf with `--read0` support.
+Requires macOS or Linux, Python 3.9+, Git 2.36+, and fzf 0.67.0+ for interactive selection.
 SSH is required for remote machines; Herdr 0.8.2+ is optional.
 
 ```sh
@@ -37,7 +37,7 @@ p --list           # inspect cached catalog
 p --json --local   # discover this machine, without cache/history writes
 ```
 
-Escape cancels. The initial scan and `--refresh` contact configured SSH machines;
+In plain navigation, Escape cancels. The initial scan and `--refresh` contact configured SSH machines;
 subsequent calls immediately show the saved catalog, even when it is stale.
 After five minutes, the next call schedules one detached background refresh.
 The picker never waits for that refresh; new entries appear on the next call.
@@ -83,6 +83,40 @@ in the matching cache `.log` file. Refreshes share a process lock and replace th
 JSON cache atomically. A context is identified by machine and
 canonical path. History is updated after successful direct editor exit or Herdr
 workspace preparation. Discovery does not read repository file contents.
+
+## Picker appearance and navigation
+
+Add a `ui` object to your configuration. Each setting is independent:
+
+```json
+"ui": {
+  "style": "accented",
+  "navigation": "vim",
+  "icons": false,
+  "show_path": false,
+  "show_help": true
+}
+```
+
+| Setting | Default | Options |
+| --- | --- | --- |
+| `style` | `plain` | `plain` (no colors), `accented` (machine/project/branch accents) |
+| `navigation` | `plain` | `plain`, `vim` |
+| `icons` | `false` | Enable Nerd Font icons explicitly; requires a Nerd Font in your terminal |
+| `show_path` | `true` | Show the full path |
+| `show_help` | `true` | Show key hints; Vim mode indicator always remains visible |
+
+Plain navigation keeps normal fzf search and arrow keys; Esc cancels.
+Vim navigation starts in INSERT. Esc switches to NORMAL and hides the input,
+preserving both the query and selection. `i` or `/` resumes INSERT.
+In NORMAL, `j`/`k` and arrows move, `g`/`G` jump to first/last,
+Ctrl-u/d move half a page, Ctrl-b/f move a full page, and `q` cancels.
+Enter opens the selected context in either mode. `h`/`l` are unassigned.
+When paths are hidden, otherwise identical contexts show a unique path suffix.
+UI changes do not invalidate the catalog cache.
+
+Missing or older fzf produces installation instructions before discovery starts.
+`--list`, `--json` and `--refresh` work without fzf. Projects does not install it.
 
 ## Shell functions
 

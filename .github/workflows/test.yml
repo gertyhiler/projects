@@ -14,4 +14,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
+      - name: Install tested fzf version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          platform=$(uname -s | tr '[:upper:]' '[:lower:]')
+          case "$(uname -m)" in
+            x86_64) arch=amd64 ;;
+            arm64|aarch64) arch=arm64 ;;
+          esac
+          asset="fzf-0.67.0-${platform}_${arch}.tar.gz"
+          mkdir -p "$RUNNER_TEMP/fzf"
+          gh release download v0.67.0 --repo junegunn/fzf --pattern "$asset" --dir "$RUNNER_TEMP/fzf"
+          tar -xzf "$RUNNER_TEMP/fzf/$asset" -C "$RUNNER_TEMP/fzf"
+          echo "$RUNNER_TEMP/fzf" >> "$GITHUB_PATH"
       - run: python -m unittest discover -s tests -v

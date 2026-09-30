@@ -17,7 +17,9 @@ import sys
 import tempfile
 import time
 
-VERSION = '0.2.0'
+from projects_ui import ensure_fzf, settings as ui_settings, rows as ui_rows, fzf_options
+
+VERSION = '0.3.0'
 SKIP = {'.git', 'node_modules', '.venv', 'venv', 'vendor', 'dist', 'build', '__pycache__', '.cache'}
 
 
@@ -62,6 +64,7 @@ def config():
     cfg = read_json(path, {})
     if not isinstance(cfg, dict):
         raise Error('Configuration must be a JSON object')
+    cfg['ui'] = ui_settings(cfg.get('ui'))
     cfg.setdefault('host', 'local')
     cfg.setdefault('roots', ['~/Projects', '~/code'])
     cfg.setdefault('remotes', [])
@@ -334,17 +337,17 @@ def label(entry):
                    (' [offline cache]' if entry.get('offline') else ''))
 
 
-def pick(entries, query):
+def pick(entries, query, ui=None, local_host=None):
+    ui = ui_settings(ui)
     history = read_json(xdg('DATA') / 'history.json', {})
     entries = sorted(entries, key=lambda e: (-history.get(identity(e), 0), e['host'], e['repo'], e['path']))
     if not entries:
         raise Error('No projects found. Configure roots in ~/.config/projects/config.json')
-    records = ''.join(f'{i}\t{label(e)}\0' for i, e in enumerate(entries)).encode()
+    records = ''.join(f'{i}\t{text}\0' for i, text in enumerate(ui_rows(entries, ui, local_host))).encode()
     env = dict(os.environ, FZF_DEFAULT_OPTS='', FZF_DEFAULT_OPTS_FILE=os.devnull)
     try:
-        result = subprocess.run(['fzf', '--read0', '--print0', '--delimiter=\t', '--with-nth=2..',
-                                 '--no-sort', '--height=80%', '--layout=reverse', '--prompt=projects> ',
-                                 '--query', query], input=records, stdout=subprocess.PIPE, env=env)
+        result = subprocess.run(['fzf'] + fzf_options(ui) + ['--query', query],
+                                input=records, stdout=subprocess.PIPE, env=env)
     except FileNotFoundError as exc:
         raise Error('fzf is required') from exc
     if result.returncode in (1, 130):
@@ -480,6 +483,8 @@ def main(argv=None):
             cfg['herdr_session'] = args.herdr_session
         if args.open_local:
             return open_local(cfg, args.open_local, args.backend, args.prepare)
+        if not (args.json or args.list or args.refresh):
+            ensure_fzf()  # Fail before a cold scan or SSH connection.
         entries = discover(cfg) if args.local else catalog(cfg, args.refresh)
         if args.json:
             print(json.dumps(entries, ensure_ascii=True))
@@ -489,7 +494,7 @@ def main(argv=None):
         elif args.refresh:
             print(f'projects: indexed {len(entries)} contexts')
         else:
-            entry = pick(entries, ' '.join(args.query))
+            entry = pick(entries, ' '.join(args.query), cfg['ui'], cfg['host'])
             if entry:
                 return open_entry(cfg, entry)
         return 0

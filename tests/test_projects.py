@@ -100,7 +100,7 @@ class ProjectsTests(unittest.TestCase):
 
     def test_cancel_does_not_open_or_record(self):
         entry = dict(host='test-machine', path='/repo', repo='repo', branch='main')
-        with patch.object(p, 'config', return_value=self.cfg), patch.object(p, 'catalog', return_value=[entry]), \
+        with patch.object(p, 'ensure_fzf'), patch.object(p, 'config', return_value=self.cfg), patch.object(p, 'catalog', return_value=[entry]), \
              patch.object(p.subprocess, 'run', return_value=subprocess.CompletedProcess([], 130, b'')), \
              patch.object(p, 'open_entry') as opened:
             self.assertEqual(p.main([]), 0)
@@ -163,7 +163,8 @@ class ProjectsTests(unittest.TestCase):
     def test_opener_changes_keep_cache_identity(self):
         original = p.cache_path(self.cfg)
         changed = dict(self.cfg, opener=['other-editor'], backend='herdr',
-                       herdr_session='default', cache_seconds=1, scan_workers=8)
+                       herdr_session='default', cache_seconds=1, scan_workers=8,
+                       ui=dict(style='accented', navigation='vim', icons=True, show_path=False))
         self.assertEqual(p.cache_path(changed), original)
         changed['roots'] = ['/another-root']
         self.assertNotEqual(p.cache_path(changed), original)
