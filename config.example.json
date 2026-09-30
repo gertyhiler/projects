@@ -1,0 +1,9 @@
+{
+  "host": "laptop",
+  "roots": ["~/Projects", "~/code"],
+  "opener": ["nvim", "."],
+  "backend": "direct",
+  "remotes": [
+    {"name": "workbox", "ssh": "workbox", "backend": "herdr"}
+  ]
+}
