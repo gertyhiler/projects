@@ -38,11 +38,18 @@ p --json --local   # discover this machine, without cache/history writes
 ```
 
 Escape cancels. The initial scan and `--refresh` contact configured SSH machines;
-subsequent calls use a five-minute cache. A failed remote refresh retains its old
+subsequent calls immediately show the saved catalog, even when it is stale.
+After five minutes, the next call schedules one detached background refresh.
+The picker never waits for that refresh; new entries appear on the next call.
+`p --refresh` explicitly waits for an update. The first run without a cache must
+finish discovery before it can show a list. Opening/editor/session settings do
+not invalidate the catalog cache. A failed remote refresh retains its old
 entries with an offline marker. Selecting one retries the connection. Local
 projects remain usable. A deleted directory produces an error; refresh to remove
 it. Discovery is bounded to five directory levels by default, skips dependencies,
 and gets all linked worktrees from Git even when they live outside the roots.
+Independent roots and Git queries use a bounded thread pool, with one worktree
+query per common repository. Local discovery runs alongside remote SSH queries.
 
 `p` opens a child editor process; it does not change the calling shell's directory.
 
@@ -56,7 +63,8 @@ and gets all linked worktrees from Git even when they live outside the roots.
 | `host` | `local` | Stable identity of this machine; set explicitly for SSH use |
 | `roots` | `~/Projects`, `~/code` | Directories to search |
 | `max_depth` | `5` | Maximum search depth below each root |
-| `cache_seconds` | `300` | Catalog lifetime |
+| `cache_seconds` | `300` | Age at which a background refresh is scheduled |
+| `scan_workers` | `4` | Local root/Git worker limit (1–16) |
 | `ssh_timeout` | `12` | SSH connection timeout in seconds |
 | `opener` | `["nvim", "."]` | Command argv, run in the chosen directory |
 | `backend` | `direct` | `direct` editor or `herdr` workspace |
@@ -70,7 +78,9 @@ trusted opener commands and SSH hosts.
 
 History is stored in `$XDG_DATA_HOME/projects/history.json`, cache in
 `$XDG_CACHE_HOME/projects/`. These follow standard home-directory fallbacks and
-are not synchronized between machines. A context is identified by machine and
+are not synchronized between machines. Background refresh diagnostics are stored
+in the matching cache `.log` file. Refreshes share a process lock and replace the
+JSON cache atomically. A context is identified by machine and
 canonical path. History is updated after successful direct editor exit or Herdr
 workspace preparation. Discovery does not read repository file contents.
 

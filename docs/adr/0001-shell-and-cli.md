@@ -18,3 +18,13 @@ reused, and commands are sent only to a newly created pane. Inside Herdr, local
 selection uses the current session; remote selection uses plain SSH to avoid
 nested clients. Outside Herdr, remote opening prepares a named remote session
 before attaching. No existing user session is stopped or reset.
+
+## Catalog latency
+
+The owner approved stale-while-revalidate caching and bounded parallel discovery.
+A saved catalog is immediately usable regardless of age; expiration schedules
+a detached refresh under a cross-process lock. Explicit refresh waits; a cold
+installation needs one full scan. Only discovery settings identify the cache.
+Local roots and Git queries share a bounded pool (four workers by default),
+with one worktree query per common repository; local and SSH discovery overlap.
+Atomic replacement keeps readers independent of refresh progress.

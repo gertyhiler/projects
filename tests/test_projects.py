@@ -7,6 +7,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from unittest.mock import patch
 
@@ -157,6 +159,134 @@ class ProjectsTests(unittest.TestCase):
     def test_non_utf8_herdr_path_has_actionable_error(self):
         with self.assertRaisesRegex(p.Error, 'direct backend'):
             p.herdr_prepare(self.cfg, '/repo' + chr(0xdcff))
+
+    def test_opener_changes_keep_cache_identity(self):
+        original = p.cache_path(self.cfg)
+        changed = dict(self.cfg, opener=['other-editor'], backend='herdr',
+                       herdr_session='default', cache_seconds=1, scan_workers=8)
+        self.assertEqual(p.cache_path(changed), original)
+        changed['roots'] = ['/another-root']
+        self.assertNotEqual(p.cache_path(changed), original)
+        first = dict(self.cfg, remotes=[dict(name='r', ssh='r')])
+        second = dict(self.cfg, remotes=[dict(name='r', ssh='r', backend='direct', herdr_session='default')])
+        self.assertEqual(p.cache_path(first), p.cache_path(second))
+        second['remotes'][0]['ssh'] = 'another-target'
+        self.assertNotEqual(p.cache_path(first), p.cache_path(second))
+
+    def test_symlink_parent_cache_identity_matches_scan(self):
+        a, b = self.root/'a', self.root/'b'
+        a.mkdir()
+        (b/'sub').mkdir(parents=True)
+        (a/'link').symlink_to(b/'sub', target_is_directory=True)
+        via_link = dict(self.cfg, roots=[str(a/'link/../repos')])
+        lexical = dict(self.cfg, roots=[str(a/'repos')])
+        real = dict(self.cfg, roots=[str(b/'repos')])
+        self.assertEqual(p.cache_path(via_link), p.cache_path(real))
+        self.assertNotEqual(p.cache_path(via_link), p.cache_path(lexical))
+
+    def test_refresh_completed_before_lock_skips_spawn(self):
+        path = p.cache_path(self.cfg)
+        p.atomic_json(path, dict(updated=time.time(), entries=[]))
+        with patch.object(p.subprocess, 'Popen') as spawn:
+            p.start_refresh(self.cfg, path)
+        spawn.assert_not_called()
+
+    def test_stale_cache_returns_without_discovery(self):
+        entries = [dict(host='test-machine', path='/cached', repo='r', branch='main')]
+        p.atomic_json(p.cache_path(self.cfg), dict(updated=0, entries=entries))
+        with patch.object(p, 'start_refresh') as refresh, patch.object(p, 'discover') as discover:
+            self.assertEqual(p.catalog(self.cfg), entries)
+        refresh.assert_called_once()
+        discover.assert_not_called()
+
+    def test_fresh_cache_does_not_spawn(self):
+        p.atomic_json(p.cache_path(self.cfg), dict(updated=time.time(), entries=[]))
+        with patch.object(p, 'start_refresh') as refresh, patch.object(p, 'discover') as discover:
+            self.assertEqual(p.catalog(self.cfg), [])
+        refresh.assert_not_called()
+        discover.assert_not_called()
+
+    def test_active_worker_suppresses_duplicate_spawn(self):
+        path = p.cache_path(self.cfg)
+        p.atomic_json(path, dict(updated=0, entries=[]))
+        with p.lock(path.with_suffix('.lock')), patch.object(p.subprocess, 'Popen') as spawn:
+            self.assertEqual(p.catalog(self.cfg), [])
+        spawn.assert_not_called()
+
+    def test_detached_worker_refreshes_atomically(self):
+        self.repo()
+        p.atomic_json(Path(os.environ['PROJECTS_CONFIG']), self.cfg)
+        path = p.cache_path(self.cfg)
+        stale = [dict(host='test-machine', path='/old', repo='old', branch='main')]
+        p.atomic_json(path, dict(updated=0, entries=stale))
+        processes = []
+        original = subprocess.Popen
+        def launch(*args, **kwargs):
+            proc = original(*args, **kwargs)
+            processes.append(proc)
+            return proc
+        with patch.object(p.subprocess, 'Popen', side_effect=launch):
+            self.assertEqual(p.catalog(self.cfg), stale)
+        self.assertEqual(len(processes), 1)
+        try:
+            self.assertEqual(processes[0].wait(timeout=15), 0,
+                             path.with_suffix('.log').read_text())
+        finally:
+            if processes[0].poll() is None:
+                processes[0].kill()
+                processes[0].wait()
+        refreshed = p.read_json(path, {})
+        self.assertGreater(refreshed['updated'], 0)
+        self.assertEqual(len(refreshed['entries']), 1)
+        self.assertNotEqual(refreshed['entries'], stale)
+        # The inherited lock was released when the worker exited.
+        with path.with_suffix('.lock').open('a') as stream:
+            p.fcntl.flock(stream, p.fcntl.LOCK_EX | p.fcntl.LOCK_NB)
+
+    def test_local_and_remote_discovery_overlap(self):
+        self.cfg['remotes'] = [dict(name='remote', ssh='remote')]
+        barrier = threading.Barrier(2, timeout=3)
+        def local(cfg):
+            barrier.wait()
+            return []
+        def remote(host, cfg):
+            barrier.wait()
+            return []
+        with patch.object(p, 'discover', side_effect=local), patch.object(p, 'remote_discover', side_effect=remote):
+            self.assertEqual(p.catalog(self.cfg, refresh=True), [])
+
+    def test_parallel_git_pool_is_bounded_and_queries_repo_once(self):
+        self.cfg['roots'] = ['/fake']
+        gate = threading.Barrier(4, timeout=3)
+        active = 0
+        peak = 0
+        mutex = threading.Lock()
+        def resolve(directory):
+            nonlocal active, peak
+            with mutex:
+                active += 1
+                peak = max(peak, active)
+            gate.wait()
+            with mutex:
+                active -= 1
+            return ('/common.git', directory)
+        with patch.object(p, 'capture', return_value=b'git version 2.53.0'), \
+             patch.object(p, 'scan_root', return_value=[str(i) for i in range(8)]), \
+             patch.object(p, 'resolve_repo', side_effect=resolve), \
+             patch.object(p, 'repo_entries', return_value=[]) as query:
+            self.assertEqual(p.discover(self.cfg), [])
+        self.assertEqual(peak, 4)
+        query.assert_called_once()
+
+    def test_independent_roots_scan_concurrently(self):
+        self.cfg['roots'] = ['/a', '/b']
+        gate = threading.Barrier(2, timeout=3)
+        def scan(root, depth):
+            gate.wait()
+            return []
+        with patch.object(p, 'capture', return_value=b'git version 2.53.0'), \
+             patch.object(p, 'scan_root', side_effect=scan):
+            self.assertEqual(p.discover(self.cfg), [])
 
     def test_removed_path_fails_before_editor(self):
         with patch.object(p, 'run') as run:
