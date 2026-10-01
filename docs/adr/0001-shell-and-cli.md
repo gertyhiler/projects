@@ -38,3 +38,12 @@ Nerd Font icons require explicit opt-in. Existing installations retain plain
 navigation and appearance unless configured. Presentation never alters context
 identity or discovery cache keys. Narrow-screen layout and horizontal navigation
 are deferred. Interface messages and documentation are English.
+
+## Caller directory integration
+
+The owner approved shell functions named p for Zsh and Fish. For a direct local
+selection the CLI writes a NUL-terminated canonical directory to a caller-owned
+private result file, leaving stdout/stderr connected to the terminal. The shell
+changes directory and invokes the existing local opener, retaining history and
+error behavior. Cancellation and remote/Herdr selections produce no directory.
+The standalone executable remains usable without shell integration.

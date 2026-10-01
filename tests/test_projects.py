@@ -35,6 +35,34 @@ class ProjectsTests(unittest.TestCase):
         self.cfg = p.config()
         self.cfg.update(host='test-machine', roots=[str(self.root / 'repos')])
 
+    def test_shell_result_only_for_direct_local_selection(self):
+        result = self.root / 'selection'
+        target = self.root / 'space and\nnewline'
+        target.mkdir()
+        entry = dict(host=self.cfg['host'], path=str(target), repo='r', branch='main')
+        with patch.object(p, 'config', return_value=self.cfg), \
+             patch.object(p, 'ensure_fzf'), patch.object(p, 'catalog', return_value=[entry]), \
+             patch.object(p, 'pick', return_value=entry) as pick, \
+             patch.object(p, 'open_entry', return_value=0) as opened, \
+             patch.dict(os.environ, HERDR_ENV=''):
+            self.assertEqual(p.main(['--shell-result', str(result)]), 0)
+            self.assertEqual(result.read_bytes(), os.fsencode(target.resolve()) + b'\0')
+            opened.assert_not_called()
+            result.unlink()
+            pick.return_value = None
+            self.assertEqual(p.main(['--shell-result', str(result)]), 0)
+            self.assertFalse(result.exists())
+            pick.return_value = entry
+            with patch.dict(os.environ, HERDR_ENV='1'):
+                self.assertEqual(p.main(['--shell-result', str(result)]), 0)
+            opened.assert_called_once()
+            self.assertFalse(result.exists())
+            opened.reset_mock()
+            pick.return_value = dict(entry, host='remote')
+            self.assertEqual(p.main(['--shell-result', str(result)]), 0)
+            opened.assert_called_once()
+            self.assertFalse(result.exists())
+
     def git(self, *args):
         return subprocess.run(['git', *map(str, args)], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 

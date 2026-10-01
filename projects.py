@@ -19,7 +19,7 @@ import time
 
 from projects_ui import ensure_fzf, settings as ui_settings, rows as ui_rows, fzf_options
 
-VERSION = '0.3.0'
+VERSION = '0.3.1'
 SKIP = {'.git', 'node_modules', '.venv', 'venv', 'vendor', 'dist', 'build', '__pycache__', '.cache'}
 
 
@@ -455,6 +455,7 @@ def main(argv=None):
     parser.add_argument('--list', action='store_true', help='print the catalog without opening')
     parser.add_argument('--json', action='store_true', help='print machine-readable catalog')
     parser.add_argument('--local', action='store_true', help='discover this machine only; do not write cache')
+    parser.add_argument('--shell-result', metavar='FILE', help=argparse.SUPPRESS)
     parser.add_argument('--open-local', metavar='PATH', help=argparse.SUPPRESS)
     parser.add_argument('--backend', choices=['direct', 'herdr'], help=argparse.SUPPRESS)
     parser.add_argument('--prepare', action='store_true', help=argparse.SUPPRESS)
@@ -496,6 +497,13 @@ def main(argv=None):
         else:
             entry = pick(entries, ' '.join(args.query), cfg['ui'], cfg['host'])
             if entry:
+                if (args.shell_result and entry['host'] == cfg['host']
+                        and cfg['backend'] == 'direct' and os.environ.get('HERDR_ENV') != '1'):
+                    path = str(Path(entry['path']).expanduser().resolve())
+                    if not Path(path).is_dir():
+                        raise Error(f'Directory no longer exists: {path}. Run p --refresh')
+                    Path(args.shell_result).write_bytes(os.fsencode(path) + b'\0')
+                    return 0
                 return open_entry(cfg, entry)
         return 0
     except (Error, OSError, ValueError) as exc:

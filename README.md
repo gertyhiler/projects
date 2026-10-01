@@ -51,7 +51,13 @@ and gets all linked worktrees from Git even when they live outside the roots.
 Independent roots and Git queries use a bounded thread pool, with one worktree
 query per common repository. Local discovery runs alongside remote SSH queries.
 
-`p` opens a child editor process; it does not change the calling shell's directory.
+The executable opens a child editor process. To keep the selected local directory
+in your calling shell after the editor exits, install a shell function named `p`.
+The [dotfiles integration](https://github.com/gertyhiler/dotfiles) provides Zsh
+and Fish functions. They ask the CLI to select a context, change the current
+shell directory, and call the configured opener. Remote and Herdr selections
+retain their existing adapters. Terminal tabs can inherit the new directory
+when your terminal and shell integration support working-directory inheritance.
 
 ## Configuration
 
